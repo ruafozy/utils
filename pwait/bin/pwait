@@ -1,0 +1,16 @@
+#!/usr/bin/env ruby
+
+if !$VERBOSE
+  require 'rbconfig'
+
+  tmp = [
+    File.join(RbConfig::CONFIG['bindir'], 'ruby'),
+    '-W2', '--', $0, *ARGV
+  ]
+
+  exec(*tmp)
+end
+
+require_relative '../lib/pwait/runner'
+
+Pwait::Runner.new(ARGV, STDOUT).run

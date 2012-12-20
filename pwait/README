@@ -1,0 +1,6 @@
+This implementation of pwait is based on the Solaris documentation here:
+
+  http://docs.oracle.com/cd/E19109-01/tsolaris8/817-0879/6mgl9vnha/index.html
+
+That document doesn't specify pwait's output format, so I have simply
+made a reasonable guess.
