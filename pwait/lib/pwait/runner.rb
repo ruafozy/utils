@@ -2,7 +2,7 @@ require_relative 'linux_process'
 
 module Pwait
   class Runner
-    SLEEP_TIME = 0.2
+    SLEEP_TIME = 0.05
 
     def initialize(args, stream)
       @stream = stream
