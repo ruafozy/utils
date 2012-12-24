@@ -14,6 +14,10 @@ module Pwait
     end
 
     def run
+      Signal.trap('INT', 'EXIT')
+      #< eliminates an ugly stack trace from Ruby, but causes the
+      # exit status to be 0.
+
       loop do
         extant, gone = @processes.partition(&:exists?)
         gone.map(&:id).sort.each { |p| @stream.puts p }
