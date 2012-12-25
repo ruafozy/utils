@@ -15,8 +15,7 @@ module Pwait
 
     def run
       Signal.trap('INT', 'EXIT')
-      #< eliminates an ugly stack trace from Ruby, but causes the
-      # exit status to be 0.
+      #< eliminates an ugly stack trace from Ruby
 
       loop do
         extant, gone = @processes.partition(&:exists?)
