@@ -1,2 +1,4 @@
-Everything in this repository may be used as if it were in the
-public domain.
+The contents of this repository are made available under the terms of
+the MIT Licence.  See:
+
+  http://opensource.org/licenses/MIT
