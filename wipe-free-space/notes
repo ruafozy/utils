@@ -1,0 +1,68 @@
+logic:
+  process options.
+    limits on FSes
+
+    exclusions
+
+  get mount points.
+
+  eliminate /proc, etc.
+
+  eliminate /media, etc (as dictated by opts)
+
+  open file.
+  remove at once.
+  write until limit hit.
+
+i declare that there is nothing remaining on
+this page that i need to assimilate:
+  http://superuser.com/questions/19326/how-to-wipe-free-disk-space-in-linux
+
+logic:
+  parse options
+
+  choose FSes
+
+  for each FS
+    do it
+
+think about: what happens if FS mounted on an FS
+we are currently handling.
+maybe: compare dev_t's and throw exception if
+you can't find a matching fs.
+.
+note: a filesystem might be mounted multiple times.
+
+features:
+  write as much as we possibly can -- fill up all
+  the space we're allowed to write to.
+
+  "quick recovery" using "two-file technique".
+
+  progress report.
+
+  specify minimum space.  examples:
+    1e6
+    10%
+
+  temp files: specifying: "delete or not"
+
+  automatically find all disk FSes.
+
+  allow specifying FSes on command line.
+
+  say: don't do under these dirs.
+
+  HERE
+
+this command shows that the temp file is deleted on SIGINT, SIGHUP, SIGTERM:
+
+  ruby -d -r tempfile -we 'tf=Tempfile.new("a"); loop do end'
+
+SIGINT:
+  SIGINT is treated as a special case in ruby;
+  see the documentation for Interrupt and SignalException.
+  it seems to be the only signal that causes printing
+  of a stack trace.
+
+proof-transcript.002 seems like definite evidence of a ruby bug.

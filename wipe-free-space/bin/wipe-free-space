@@ -1,0 +1,255 @@
+#!/usr/local/bin/ruby-2
+
+Signal.trap('INT', 'EXIT')
+=begin
+< i see nothing in the methadone docs that indicates this
+will cause a problem.
+
+using "SYSTEM_DEFAULT" is not an option, because that will mean
+that the Tempfile module's temporary files won't be deleted.
+=end
+
+File.expand_path('../../lib', __FILE__).tap do |path|
+  $: << path if !path.include?(path)
+end
+
+require 'methadone'
+require 'pathname'
+require 'sys/filesystem'
+require 'shellwords'
+require 'tempfile'
+
+require 'extensions'
+require 'minimum_space_calculator'
+require 'wipe_free_space/version'
+
+require 'pp'
+
+class App
+  include Methadone::CLILogging
+  include Methadone::Main
+
+  if true
+    SMALL_FILE_MAX_SIZE = 50 * 1024 * 1024
+    STANDARD_WRITE_BLOCK_SIZE = 1024 * 1024
+  else
+    SMALL_FILE_MAX_SIZE = 1024 * 1024
+    STANDARD_WRITE_BLOCK_SIZE = 16 * 1024
+  end
+
+  INTERVAL_BETWEEN_REPORTS = 1
+
+  def initialize
+    @defer_temporary_file_deletion = false
+
+    @minimum_space_calculator = Hash.new(
+      MinimumSpaceCalculator.new('0').freeze
+    )
+
+    @probe_command = nil
+  end
+
+  def choose_mount_points(mount_points, excluded_dirs)
+    is_excluded = ->(dir) do
+      excluded_dirs.any? do |e|
+        Pathname.new(e).contains(Pathname.new(dir))
+      end
+    end
+
+    @mount_points =
+      if !mount_points.empty?
+        mount_points
+      else
+        Sys::Filesystem.mounts.find_all(&:disk?).
+          map(&:mount_point)
+      end
+
+    @mount_points.map! { |m| cleanpath(m) }.reject!(&is_excluded)
+  end
+
+  attr_accessor :defer_temporary_file_deletion
+
+  attr_accessor :minimum_space_calculator
+
+  #> this will be passed verbatim to "sh -c"
+  attr_accessor :probe_command
+
+  def run
+    @mount_points.each do |mp|
+      do_filesystem(Pathname.new(mp))
+    end
+  end
+
+  private
+
+  # we must have: path.is_a?(Pathname)
+  #
+  def do_filesystem(path)
+    t = path + 'tmp'
+    temp_dir = t.exist? && !t.mountpoint? ? t: path
+
+    prefix = File.basename($0) + '.'
+
+    temp_files = []
+
+    [SMALL_FILE_MAX_SIZE, Float::INFINITY].each do |max_size|
+      begin
+        temp_file = Tempfile.new(prefix, temp_dir)
+      rescue => exception
+        warn("cannot create temporary file: #{exception}")
+        break
+      else
+        temp_files << temp_file
+        temp_file.unlink unless defer_temporary_file_deletion
+        write_file(temp_file, max_size)
+      end
+    end
+
+    temp_files.each(&:fdatasync)
+
+    send_to_probe(path.to_s)
+
+    #> we want the small file deleted first, to free up
+    # space quickly.
+    temp_files.each(&:close)
+  end
+
+  def get_reserved_space(filesystem)
+    minimum_space_calculator[cleanpath(filesystem.path)][filesystem]
+  end
+
+  def report_progress
+    if !instance_variable_defined?(:@last_report_time) ||
+      Time.now - @last_report_time > INTERVAL_BETWEEN_REPORTS
+    then
+      yield
+      @last_report_time = Time.now
+    end
+  end
+
+  def send_to_probe(path)
+    if probe_command
+      system('sh', '-c', "#{probe_command} #{path.shellescape}")
+    end
+  end
+
+  def write_file(file_handle, file_size)
+    write_block_size = STANDARD_WRITE_BLOCK_SIZE
+
+    loop do
+      filesystem = file_handle.filesystem
+      report_progress do
+        percentage = '%.1f%%' % (filesystem.fraction_free * 100)
+        info(
+          "Free space remaining on #{filesystem.path}: #{percentage}"
+        )
+      end
+      reserved_space = get_reserved_space(filesystem)
+      space_for_writing = [
+        filesystem.bytes_free - reserved_space,
+        file_size - file_handle.stat.size
+      ].min
+      break if space_for_writing <= 0
+      write_block_size = [write_block_size, space_for_writing].min
+      space_may_be_exhausted =
+        begin
+          file_handle.syswrite("\0" * write_block_size) < write_block_size
+        rescue Errno::ENOSPC
+          true
+        end
+      write_block_size /= 2 if space_may_be_exhausted
+      break if write_block_size == 0
+    end
+  end
+end
+
+class App
+  app = new
+  excluded_dirs = []
+
+  main do |*mount_points|
+    app.choose_mount_points(mount_points, excluded_dirs)
+    app.run
+  end
+
+  description 'Wipe free space on disk filesystems'
+  version WipeFreeSpace::VERSION
+
+  opts.on(
+    '-x', '--exclude DIRECTORY',
+    "Don't process mount points under DIRECTORY",
+    "(may be specified multiple times)"
+  ) do |dir|
+    excluded_dirs << cleanpath(dir)
+  end
+
+  opts.on(
+    '-m', '--min-free MOUNT_POINT:MINIMUM',
+
+    #> OptionParser chokes if we use blank lines
+    # here
+    *%q{
+      Set the minimum free space on
+      MOUNT_POINT.  MINIMUM is either
+      a percentage (e.g. "10%"), or an
+      absolute value denoting bytes.  If the
+      latter, it may be in decimal notation
+      (e.g. "12345"), or exponential
+      notation (e.g. "5e6").  An empty
+      MOUNT_POINT sets a default for all
+      filesystems, which may be overridden
+      for specific filesystems.
+    }.scan(/\S.*\S/)
+  ) do |min_info|
+    raise OptionParser::InvalidArgument, min_info if
+      !min_info.include?(':')
+    # < this usage appears to be undocumented.  however,
+    # optparse/time.rb makes it clear that it's valid.
+
+    mount_point, space_spec = min_info.split(':', 2)
+
+    begin
+      calculator = MinimumSpaceCalculator.new(space_spec)
+    rescue
+      raise OptionParser::InvalidArgument, min_info
+    end
+
+    if mount_point == ''
+      app.minimum_space_calculator.default = calculator
+    else
+      app.minimum_space_calculator[cleanpath(mount_point)] = calculator
+    end
+  end
+
+  opts.on(
+    '-d',
+    '--[no-]defer-deletion',
+    *%q{
+      Defer deletion of temporary files until
+      filesystem has been processed.  (By default,
+      temporary files are deleted immediately
+      after creation.)
+    }.scan(/\S.*\S/)
+  ) do |defer|
+    app.defer_temporary_file_deletion = defer
+  end
+
+  opts.on(
+    '--probe PROBE_COMMAND',
+    'For developers only',
+    '(used for testing)'
+  ) do |probe_command|
+    app.probe_command = probe_command
+  end
+
+  leak_exceptions(true)
+  leak_exceptions(false)
+
+  use_log_level_option
+
+  arg 'MOUNT_POINT', :any
+
+  go!
+end
+
+# vim: set syntax=ruby:

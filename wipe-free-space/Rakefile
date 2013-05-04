@@ -1,0 +1,82 @@
+require 'bundler/gem_tasks'
+require 'find'
+require 'pathname'
+
+LVM_PREFIX = 'test-filling'
+TEST_USER = 'fstester'
+VOLUME_GROUP = 'vg1'
+
+#> probably needless
+desc "Delete all files on test filesystems"
+task :clean_test_filesystems do
+  require_relative 'test/app_test'
+
+  FileUtils.sh(
+    'sudo', '-Hnu', TEST_USER,
+    'find', AppTest::PREFIX, '-type', 'f', '-delete'
+  )
+end
+
+desc "Mount test filesystems"
+task :mount_test_filesystems => :must_be_root do
+  mount_info.each do |device, mount_point|
+    if !Pathname.new(mount_point).mountpoint?
+      FileUtils.makedirs(mount_point)
+
+      command = ['mount', device, mount_point]
+
+      FileUtils.sh(*command)
+
+      FileUtils.sh(
+        'chown', '--recursive', "#{TEST_USER}:#{TEST_USER}", mount_point
+      )
+    end
+  end
+end
+
+desc "Die unless user is root"
+task :must_be_root do
+  if Process.euid != 0
+    fail "you are not root"
+  end
+end
+
+if false
+  require 'rake/testtask'
+
+  Rake::TestTask.new do |t|
+    t.pattern = 'test/*?_test.rb'
+    t.verbose = true
+  end
+end
+
+desc "Run test suite; pattern is passed to test runner"
+task :test, [:pattern] do |_, args|
+  ruby_lib =
+    (ENV['RUBYLIB'] ? ENV['RUBYLIB'] + ':': '') +
+    File.join(__dir__, 'lib')
+
+  command = [
+    'sudo', '-Hnu', TEST_USER,
+    'RUBYLIB=' + ruby_lib,
+    FileUtils::RUBY,
+    File.join(__dir__, 'test', 'ts_all.rb')
+  ]
+
+  if args.pattern
+    command.push('-n', args.pattern)
+  end
+
+  FileUtils.sh(*command)
+end
+
+desc "Unmount test filesystems"
+task :umount_test_filesystems => :must_be_root do
+  mount_info.reverse_each do |device, mount_point|
+    if Pathname.new(mount_point).mountpoint?
+      FileUtils.sh('umount', mount_point)
+    end
+  end
+end
+
+task :default => :test
