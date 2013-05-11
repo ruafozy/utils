@@ -11,7 +11,8 @@ Gem::Specification.new do |spec|
     This gem contains a program which temporarily fills up disk
     filesystems, thus overwriting sensitive material from deleted files.
   }
-  spec.homepage      = "https://github.com/ruafozy/wipe_free_space"
+  spec.homepage =
+    "https://github.com/ruafozy/utils/tree/master/wipe-free-space"
   spec.license       = "MIT"
 
   spec.files         = `git ls-files`.split($/) - %w{
