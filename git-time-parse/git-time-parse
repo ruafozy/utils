@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# git-time-parse: feed times to Git and see how Git interprets them
+# git-time-parse: feed times to Git and see how Git interprets them.
 #
 # GNU date is required.
 
