@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# "git-time-parse": "feed a time to git and see how git interprets it"
+# git-time-parse: feed times to Git and see how Git interprets them
 
 main() {
   if test $# -ge 1 -a "$1" = --help; then
