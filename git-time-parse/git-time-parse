@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# "git-time-parse": "feed a time to git and see how git interprets it"
+
+main() {
+  if test $# -ge 1 -a "$1" = --help; then
+    show_help
+  else
+    if git_dir=`mktemp -d`; then
+      if git init --quiet --bare "$git_dir"; then
+        for input_time in "$@"; do
+          while true; do
+            time1=`date +%s`
+            output=$(
+              git --git-dir "$git_dir" --bare rev-parse --since="$input_time"
+            )
+            time2=`date +%s`
+
+            if test "$time2" = "$time1"; then
+              break
+            fi
+          done
+
+          timestamp=$(printf '%s' "$output" | cut -d= -f2)
+
+          if test "$timestamp" = "$time2"; then
+            extra='* '
+          else
+            extra=''
+          fi
+
+          readable_time=$(date -d "@$timestamp" --rfc-2822)
+
+          echo "$readable_time      $extra$input_time"
+        done
+      fi
+
+      rm -fr "$git_dir"
+    fi
+  fi
+}
+
+show_help() {
+  cat <<'END'
+Usage:
+  git-time-parse GIT_TIME_STRING...
+    For each GIT_TIME_STRING, show Git's interpretation
+    of that time in RFC 2822 format, followed by
+    GIT_TIME_STRING.
+
+    If Git interprets a time as being the current time,
+    then it probably doesn't understand it; such times
+    are indicated by preceding GIT_TIME_STRING with an
+    asterisk.
+
+  git-time-parse --help
+    Show this message
+END
+}
+
+main "$@"

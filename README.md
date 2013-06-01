@@ -1,5 +1,10 @@
 A collection of command-line utilities.
 
+## git-time-parse
+
+A simple utility for discovering how
+Git will interpret a time string.
+
 ## pwait
 
 A clone of Solaris's `pwait` utility.
