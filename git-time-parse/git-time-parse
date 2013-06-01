@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # git-time-parse: feed times to Git and see how Git interprets them
+#
+# GNU date is required.
 
 main() {
   if test $# -ge 1 -a "$1" = --help; then
